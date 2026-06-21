@@ -32,9 +32,9 @@ def test_installed_entry_point_help():
     assert "cw" in result.stdout
 
 
-def test_installed_entry_point_cw_placeholder():
-    """`toolsmith cw` prints the placeholder message and does not mutate git."""
+def test_installed_entry_point_cw_phase_2_contract():
+    """`toolsmith cw` validates configuration and exits cleanly without mutation."""
     result = _run_toolsmith("cw")
     assert result.returncode == 0
-    assert "not implemented in Phase 1" in result.stdout
+    assert "Error" not in result.stderr
     assert "git" not in result.stdout.lower()

@@ -1,4 +1,4 @@
-"""toolsmith error taxonomy and exit-code mapping (Phase 2+)."""
+"""toolsmith error taxonomy and exit-code mapping."""
 
 from __future__ import annotations
 
@@ -7,6 +7,12 @@ class ToolsmithError(Exception):
     """Base class for all toolsmith errors."""
 
     exit_code: int = 1
+
+
+class CancelError(ToolsmithError):
+    """User rejected or cancelled the operation."""
+
+    exit_code = 2
 
 
 class UsageError(ToolsmithError):
@@ -19,3 +25,8 @@ class DependencyError(ToolsmithError):
     """External dependency failure (git, LLM runtime, editor)."""
 
     exit_code = 4
+
+
+def render_message(exc: BaseException) -> str:
+    """Return a concise, user-facing message for an exception."""
+    return str(exc) if str(exc) else type(exc).__name__

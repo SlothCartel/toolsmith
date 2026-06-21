@@ -1,18 +1,18 @@
 # toolsmith Agent Guidance
 
-**Status:** Phase 1 scaffold  
-**Maintainer:** Repository maintainer (single owner until team growth is documented)  
-**Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`  
+**Status:** Phase 2 CLI contract, configuration, and error model
+**Maintainer:** Repository maintainer (single owner until team growth is documented)
+**Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`
 
 This file is a living architecture and ownership record. Any change to command structure, safety behavior, provider policy, test commands, configuration, or release procedure must update this file and `GUARDRAILS.md` in the same change, then receive maintainer review before merging.
 
 ---
 
-## Phase 1 objective
+## Phase 1–2 objective
 
 Establish the repository contract and the smallest installable Python `toolsmith` package skeleton before Commit Writer feature implementation begins.
 
-Phase 1 delivers:
+Phase 1 delivered:
 
 - Repository governance (`agents/AGENTS.md`, `agents/GUARDRAILS.md`).
 - A `src/` layout Python package with importable subpackages.
@@ -20,7 +20,14 @@ Phase 1 delivers:
 - pytest configuration and a smoke-test suite proving imports and help work.
 - Documented stack choices (Python versions, build backend, CLI approach, dependencies).
 
-Phase 1 does **not** implement `toolsmith cw` behavior, LLM provider behavior, git diff/commit/push behavior, or any future command.
+Phase 2 delivered:
+
+- Stable `toolsmith --help` and `toolsmith cw --help`.
+- `--no-push`, `--dry-run`, and optional `--model` CLI options.
+- Built-in defaults, optional user TOML loading from `~/.config/toolsmith/config.toml`, and validated precedence (CLI > user config > defaults).
+- A centralized error taxonomy and exit-code mapping used by the CLI boundary.
+
+Phase 2 does **not** implement git diff/commit/push behavior or LLM provider calls.
 
 ---
 
@@ -36,11 +43,11 @@ src/
   toolsmith/
     __init__.py          # package version
     cli.py               # argparse root command and subcommand registration
-    config.py            # defaults, user TOML loading, validation (Phase 2+)
-    errors.py            # error taxonomy and exit-code mapping (Phase 2+)
+    config.py            # defaults, user TOML loading, validation, precedence
+    errors.py            # error taxonomy and exit-code mapping
     commands/
       __init__.py
-      commit_writer.py   # cw command orchestration (placeholder)
+      commit_writer.py   # cw command orchestration (Phase 2 config only; no git/LLM yet)
     git/
       __init__.py
       repository.py      # repository detection and root resolution (Phase 3)
@@ -62,12 +69,10 @@ tests/
   integration/           # temporary-git repository tests
 ```
 
----
+Boundary rules:
 
-## Module responsibilities
-
-- `cli.py` – owns argument parsing, subcommand routing, and top-level help. Heavy imports and service construction are deferred to subcommands so `--help` starts quickly.
-- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor process logic.
+- `cli.py` – owns argument parsing, subcommand routing, and top-level help. Heavy imports and service construction are deferred to subcommands so `--help` starts quickly. The CLI boundary catches `ToolsmithError`, maps it to the documented exit code, and prints a concise message.
+- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. In Phase 2 it only validates and merges configuration. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor process logic.
 - `git/` – owns all git subprocess calls. Uses argument arrays, never shell interpolation. Returns typed/domain results or raises mapped `toolsmith` errors.
 - `llm/base.py` – defines the shared `LLMClient` contract and request/response types. `llm/ollama.py` is the sole Phase 1 provider adapter.
 - `prompts/commit_writer.py` – owns compact prompt construction and message cleanup/validation helpers.
@@ -83,9 +88,9 @@ tests/
 - **Build backend:** `setuptools` (widely available, minimal, supports `src/` layout).
 - **CLI approach:** Python standard-library `argparse`. No external CLI framework is required for Phase 1; this keeps dependencies minimal and startup fast.
 - **Test runner:** `pytest` (canonical for Phase 1 automated tests).
-- **Runtime dependencies:** none. All Phase 1 scaffold code uses the Python standard library.
+- **Runtime dependencies:** none in Phase 1. Phase 2 adds `tomli` as a conditional runtime dependency for Python 3.10 TOML parsing fallback; Python 3.11+ uses the standard-library `tomllib`.
 - **Development dependencies:** `pytest` for automated testing.
-- **Configuration format:** TOML at `~/.config/toolsmith/config.toml` (planned for Phase 2). Standard-library TOML support is available via `tomllib` on Python 3.11+; a minimal fallback strategy will be chosen in Phase 2 if Python 3.10 compatibility is retained.
+- **Configuration format:** TOML at `~/.config/toolsmith/config.toml`.
 - **Local provider:** Ollama-compatible adapter planned for Phase 4. No cloud provider, fallback, or plugin system is introduced in Phase 1.
 - **Editor resolution:** planned to resolve `$VISUAL`, then `$EDITOR`, then a documented executable fallback in Phase 6. If no editor is found, fail without committing.
 
@@ -110,20 +115,38 @@ Manual tests and optional local-provider smoke tests are documented in `planning
 ### Current
 
 - `toolsmith --help` – root help.
+- `toolsmith cw --help` – Commit Writer help, including staged-change preconditions, options, examples, and safety notes.
+- `toolsmith cw` – parses configuration and options; validates but does not perform git, LLM, commit, push, staging, or mutation behavior in Phase 2.
 
-### Phase 1 only
+### Phase 2 options
 
-- `toolsmith cw` – registered as a placeholder; does not perform git, LLM, commit, push, staging, or mutation behavior in Phase 1.
+- `--no-push` – skip the post-commit push prompt.
+- `--dry-run` – preview behavior without creating a commit, push, or LLM call.
+- `--model MODEL` – override the configured model identifier for this run only. This changes only the model string sent to the configured local provider; it never changes the provider class, endpoint policy, or local-only policy.
 
-### Future commands (not implemented in Phase 1)
+### Future commands (not implemented in Phase 1/2)
 
-The following are explicitly reserved for future planning. They must not be implemented, partially wired, or given speculative dependencies during Phase 1:
+The following are explicitly reserved for future planning. They must not be implemented, partially wired, or given speculative dependencies during Phase 1/2:
 
 - `toolsmith mail` – Email Improver
 - `toolsmith req` – Requirements Reviewer
 - `toolsmith err` – Error Explainer
 
 Implementation of any future command requires a revised scope/requirements document and a separate implementation plan.
+
+---
+
+## Exit-code mapping
+
+The CLI boundary uses these stable exit codes from `toolsmith.errors`:
+
+| Code | Meaning | Exception type |
+|------|---------|----------------|
+| `0`  | Success | – |
+| `1`  | General failure | `ToolsmithError` |
+| `2`  | User rejected/cancelled | `CancelError` |
+| `3`  | Invalid usage/environment/config | `UsageError` |
+| `4`  | External dependency failure | `DependencyError` |
 
 ---
 
@@ -135,13 +158,13 @@ Implementation of any future command requires a revised scope/requirements docum
   1. This file and `GUARDRAILS.md` still match the implementation.
   2. The architecture map matches the file tree.
   3. The canonical pytest commands still pass.
-  4. No Phase 1 non-goal has entered dependencies or code.
+  4. No Phase 1/2 non-goal has entered dependencies or code.
 
 ---
 
 ## Deferred decisions
 
-The following decisions are intentionally deferred to later phases and must not be anticipated in Phase 1 code or dependencies:
+The following decisions are intentionally deferred to later phases and must not be anticipated in Phase 2 code or dependencies:
 
 - Direct `cw` executable alias.
 - Conventional Commits mode.
