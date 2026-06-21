@@ -232,7 +232,28 @@ requests time out.
 
 ### "LLM returned empty output"
 
-The local model produced no text. Try a different model or check the runtime logs.
+The local model produced no text. Common causes:
+
+- **Reasoning / thinking model.** Some models (for example `qwen3.5:2b` or other
+  thinking variants) return their reasoning in a separate `thinking` field and emit
+  an empty `response` when the generation budget is consumed before the final
+  answer. toolsmith now surfaces a preview of that thinking output in the error.
+  Try a non-reasoning coding model such as `qwen2.5-coder:7b`.
+- **Incompatible or not fully loaded model.** The model may fail to decode if the
+  prompt template does not match. Run:
+
+  ```bash
+  ollama logs
+  ```
+
+- **Context window too small.** For very large diffs on small models, try lowering
+  `max_diff_chars` or increasing the runtime context window.
+
+To inspect the raw response, reproduce the request with `curl`:
+
+```bash
+curl -s -X POST http://localhost:11434/api/generate   -H 'Content-Type: application/json'   -d '{"model":"qwen3.5:2b","prompt":"write a short commit message","stream":false,"options":{"temperature":0.2,"num_predict":512}}'   | head -c 500
+```
 
 ### "No editor found"
 

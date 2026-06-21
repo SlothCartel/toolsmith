@@ -137,10 +137,26 @@ def _parse_ollama_response(raw: bytes) -> LLMResponse:
         )
 
     if generated == "":
+        done_reason = response_json.get("done_reason")
+        thinking = response_json.get("thinking")
+        detail = f" (done_reason={done_reason!r})" if done_reason else ""
+        if thinking and isinstance(thinking, str) and thinking.strip():
+            preview = thinking.strip().splitlines()[0][:120]
+            if len(preview) < len(thinking.strip()):
+                preview += "..."
+            return LLMResponse(
+                text="",
+                success=False,
+                error=(
+                    f"LLM returned empty output{detail}, but produced reasoning/thinking output. "
+                    f"Preview: {preview!r}. Reasoning models may consume the generation budget "
+                    f"before emitting a commit message. Try a non-reasoning model or increase max_tokens."
+                ),
+            )
         return LLMResponse(
             text="",
             success=False,
-            error="LLM returned empty output.",
+            error=f"LLM returned empty output{detail}. The local model produced no text; check 'ollama logs' or try another model.",
         )
 
     return LLMResponse(text=generated, success=True)
