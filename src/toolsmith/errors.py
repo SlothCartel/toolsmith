@@ -27,6 +27,18 @@ class DependencyError(ToolsmithError):
     exit_code = 4
 
 
+class NoRepositoryError(UsageError):
+    """The current directory is not inside a git repository."""
+
+
+class NoStagedChangesError(UsageError):
+    """No staged changes are present in the git index."""
+
+
+class GitError(DependencyError):
+    """A git subprocess command failed or produced an unexpected result."""
+
+
 def render_message(exc: BaseException) -> str:
     """Return a concise, user-facing message for an exception."""
     return str(exc) if str(exc) else type(exc).__name__

@@ -1,6 +1,6 @@
-# toolsmith Phase 2 Guardrails
+# toolsmith Phase 3 Guardrails
 
-**Status:** Phase 2 invariants
+**Status:** Phase 3 invariants
 **Maintainer:** Repository maintainer
 **Requirement sources:** `planning/project_implementation_plan.md` Section 3, `planning/req_spec.md`, `planning/scope.md`
 
@@ -10,17 +10,18 @@ This file records the safety and scope invariants that every implementation phas
 
 ## LLM and data-locality guardrails
 
-- **Local-only LLM processing.** All LLM processing must be local in Phase 1/2. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
+- **Local-only LLM processing.** All LLM processing must be local in Phase 1/2/3. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
 - **No cloud default.** The default provider configuration must assume local model execution. No cloud provider may be configured or implied by defaults.
 - **Staged-diff-only input.** Only the staged git index is input to prompt preparation. Never add unstaged changes, repository history, repository-wide analysis, or unrelated files to the prompt.
 - **No diff persistence.** Do not persist staged diffs in logs, telemetry, caches, or durable temporary files.
-- **No telemetry.** Phase 1/2 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
+- **No telemetry.** Phase 1/2/3 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
 - **Model override is local-only.** The `--model` option changes only the model identifier passed to the configured local provider. It must never change the provider class, endpoint policy, or local-only policy.
 
 ---
 
 ## Git mutation and user-control guardrails
 
+- **Read-only git services in Phase 3.** All git subprocess calls in Phase 3 use only `git diff --cached` and `git rev-parse --show-toplevel`. No Phase 3 code stages, unstages, modifies, commits, pushes, branches, reads working-tree file contents directly, or changes git configuration.
 - **No automatic staging/unstaging.** toolsmith must not stage, unstage, modify, or generate application code on the user's behalf as part of `toolsmith cw`.
 - **No commit before explicit approval.** Never create a commit before the generated or edited message has been displayed and the user has explicitly accepted it.
 - **Reject/cancel/error leaves the repository unchanged.** Reject, cancellation, editor failure, LLM failure, and any pre-approval error must leave the repository uncommitted and must not mutate the index, working tree, branch, remotes, or git configuration.
@@ -33,8 +34,8 @@ This file records the safety and scope invariants that every implementation phas
 ## Scope and dependency guardrails
 
 - **No cloud SDKs or agent frameworks.** Dependencies must not include cloud SDKs, agent frameworks, background-service frameworks, telemetry libraries, RAG/embedding/vector-store libraries, web/chat/voice UI frameworks, workflow orchestrators, or public API clients.
-- **No future-command implementation.** Do not implement Email Improver, Error Explainer, Requirements Reviewer, or any command other than Commit Writer in Phase 1/2. Keep future extensibility to clear command and shared-service boundaries; do not build speculative abstractions for commands that do not yet exist.
-- **No background services or daemons.** Phase 1/2 must not include long-running background services, daemons, or servers.
+- **No future-command implementation.** Do not implement Email Improver, Error Explainer, Requirements Reviewer, or any command other than Commit Writer in Phase 1/2/3. Keep future extensibility to clear command and shared-service boundaries; do not build speculative abstractions for commands that do not yet exist.
+- **No background services or daemons.** Phase 1/2/3 must not include long-running background services, daemons, or servers.
 - **Minimal dependencies.** Prefer the standard library. Each non-development dependency added in a later phase must have an explicit Phase 1+ justification recorded in `AGENTS.md`. Phase 2 adds `tomli` only as a Python 3.10 fallback for the required TOML config format.
 
 ---
@@ -49,9 +50,9 @@ Review this file:
 
 ---
 
-## Phase 1/2 non-goals
+## Phase 1/2/3 non-goals
 
-The following stay outside Phase 1/2 unless the requirements documents are formally revised:
+The following stay outside Phase 1/2/3 unless the requirements documents are formally revised:
 
 - Direct `cw` executable alias.
 - Conventional Commits mode.

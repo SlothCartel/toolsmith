@@ -7,12 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = str(REPO_ROOT / "src")
 
 
-def _run_toolsmith(*args: str) -> subprocess.CompletedProcess[str]:
+def _run_toolsmith(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR + os.pathsep + env.get("PYTHONPATH", "")
     return subprocess.run(
@@ -21,7 +20,27 @@ def _run_toolsmith(*args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
         env=env,
+        cwd=cwd,
     )
+
+
+def _make_staged_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    (repo / "staged.txt").write_text("staged content")
+    subprocess.run(
+        ["git", "add", "staged.txt"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    return repo
 
 
 def test_installed_entry_point_help():
@@ -32,9 +51,17 @@ def test_installed_entry_point_help():
     assert "cw" in result.stdout
 
 
-def test_installed_entry_point_cw_phase_2_contract():
-    """`toolsmith cw` validates configuration and exits cleanly without mutation."""
-    result = _run_toolsmith("cw")
+def test_installed_entry_point_cw_phase_3_contract(tmp_path):
+    """`toolsmith cw` resolves git state and exits cleanly when staged changes exist."""
+    repo = _make_staged_repo(tmp_path)
+    result = _run_toolsmith("cw", cwd=str(repo))
     assert result.returncode == 0
     assert "Error" not in result.stderr
-    assert "git" not in result.stdout.lower()
+
+
+def test_installed_entry_point_cw_outside_repository_exits_nonzero(tmp_path):
+    """`toolsmith cw` exits with an actionable error when not inside a repository."""
+    result = _run_toolsmith("cw", cwd=str(tmp_path))
+    assert result.returncode == 3
+    assert "Error:" in result.stderr
+    assert "git repository" in result.stderr.lower()

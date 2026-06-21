@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from toolsmith.cli import create_parser, main
+
+
+def _make_staged_repo(tmp_path: Path) -> Path:
+    """Create a disposable git repository with one staged file."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    (repo / "staged.txt").write_text("staged content")
+    subprocess.run(
+        ["git", "add", "staged.txt"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    return repo
 
 
 def test_root_help(capsys):
@@ -44,6 +67,8 @@ def test_main_no_args_prints_help(capsys):
 
 
 def test_main_cw_no_args_returns_zero(capsys, monkeypatch, tmp_path):
+    repo = _make_staged_repo(tmp_path)
+    monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
     code = main(["cw"])
     assert code == 0
@@ -61,6 +86,8 @@ def test_main_cw_dry_run(capsys, monkeypatch, tmp_path):
 
 
 def test_main_cw_no_push_parses(capsys, monkeypatch, tmp_path):
+    repo = _make_staged_repo(tmp_path)
+    monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
     code = main(["cw", "--no-push"])
     assert code == 0
@@ -68,6 +95,8 @@ def test_main_cw_no_push_parses(capsys, monkeypatch, tmp_path):
 
 
 def test_main_cw_model_override_parses(capsys, monkeypatch, tmp_path):
+    repo = _make_staged_repo(tmp_path)
+    monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
     code = main(["cw", "--model", "mistral:latest"])
     assert code == 0
@@ -119,6 +148,36 @@ def test_main_cw_keyboard_interrupt_returns_cancel_exit_code(
     )
     code = main(["cw"])
     assert code == 2
+
+
+def test_main_cw_outside_repository_exits_usage_error(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    code = main(["cw"])
+    assert code == 3
+    captured = capsys.readouterr()
+    assert "Error:" in captured.err
+    assert "git repository" in captured.err.lower()
+
+
+def test_main_cw_no_staged_changes_exits_usage_error(
+    capsys, monkeypatch, tmp_path
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    monkeypatch.chdir(str(repo))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    code = main(["cw"])
+    assert code == 3
+    captured = capsys.readouterr()
+    assert "Error:" in captured.err
+    assert "staged" in captured.err.lower()
 
 
 def test_main_version(capsys):
