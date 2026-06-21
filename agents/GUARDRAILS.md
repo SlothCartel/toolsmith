@@ -1,6 +1,6 @@
-# toolsmith Phase 3 Guardrails
+# toolsmith Phase 4 Guardrails
 
-**Status:** Phase 3 invariants
+**Status:** Phase 4 invariants
 **Maintainer:** Repository maintainer
 **Requirement sources:** `planning/project_implementation_plan.md` Section 3, `planning/req_spec.md`, `planning/scope.md`
 
@@ -10,18 +10,19 @@ This file records the safety and scope invariants that every implementation phas
 
 ## LLM and data-locality guardrails
 
-- **Local-only LLM processing.** All LLM processing must be local in Phase 1/2/3. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
+- **Local-only LLM processing.** All LLM processing must be local in Phase 1–4. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
 - **No cloud default.** The default provider configuration must assume local model execution. No cloud provider may be configured or implied by defaults.
 - **Staged-diff-only input.** Only the staged git index is input to prompt preparation. Never add unstaged changes, repository history, repository-wide analysis, or unrelated files to the prompt.
 - **No diff persistence.** Do not persist staged diffs in logs, telemetry, caches, or durable temporary files.
-- **No telemetry.** Phase 1/2/3 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
+- **No telemetry.** Phase 1–4 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
 - **Model override is local-only.** The `--model` option changes only the model identifier passed to the configured local provider. It must never change the provider class, endpoint policy, or local-only policy.
+- **Supported provider is explicit and local.** The only Phase 1–4 provider is the local Ollama-compatible adapter. Provider selection must reject unsupported providers before any generation attempt. No cloud, remote, or network fallback may be attempted.
 
 ---
 
 ## Git mutation and user-control guardrails
 
-- **Read-only git services in Phase 3.** All git subprocess calls in Phase 3 use only `git diff --cached` and `git rev-parse --show-toplevel`. No Phase 3 code stages, unstages, modifies, commits, pushes, branches, reads working-tree file contents directly, or changes git configuration.
+- **Read-only git services in Phase 3–4.** All git subprocess calls in Phase 3–4 use only `git diff --cached` and `git rev-parse --show-toplevel`. No Phase 3–4 code stages, unstages, modifies, commits, pushes, branches, reads working-tree file contents directly, or changes git configuration.
 - **No automatic staging/unstaging.** toolsmith must not stage, unstage, modify, or generate application code on the user's behalf as part of `toolsmith cw`.
 - **No commit before explicit approval.** Never create a commit before the generated or edited message has been displayed and the user has explicitly accepted it.
 - **Reject/cancel/error leaves the repository unchanged.** Reject, cancellation, editor failure, LLM failure, and any pre-approval error must leave the repository uncommitted and must not mutate the index, working tree, branch, remotes, or git configuration.
@@ -34,8 +35,11 @@ This file records the safety and scope invariants that every implementation phas
 ## Scope and dependency guardrails
 
 - **No cloud SDKs or agent frameworks.** Dependencies must not include cloud SDKs, agent frameworks, background-service frameworks, telemetry libraries, RAG/embedding/vector-store libraries, web/chat/voice UI frameworks, workflow orchestrators, or public API clients.
-- **No future-command implementation.** Do not implement Email Improver, Error Explainer, Requirements Reviewer, or any command other than Commit Writer in Phase 1/2/3. Keep future extensibility to clear command and shared-service boundaries; do not build speculative abstractions for commands that do not yet exist.
-- **No background services or daemons.** Phase 1/2/3 must not include long-running background services, daemons, or servers.
+- **No future-command implementation.** Do not implement Email Improver, Error Explainer, Requirements Reviewer, or any command other than Commit Writer in Phase 1–4. Keep future extensibility to clear command and shared-service boundaries; do not build speculative abstractions for commands that do not yet exist.
+- **No background services or daemons.** Phase 1–4 must not include long-running background services, daemons, or servers.
+- **No provider plugin system.** Phase 1–4 supports exactly one local provider. Do not add plugin discovery, dynamic provider loading, or a generic provider registry.
+- **No model download or runtime management.** Phase 1–4 does not download, install, start, or manage the local LLM runtime or model files. The user is responsible for having Ollama and the configured model available.
+- **No retry chain across providers.** Phase 1–4 does not retry failed LLM calls or fall back to alternative providers.
 - **Minimal dependencies.** Prefer the standard library. Each non-development dependency added in a later phase must have an explicit Phase 1+ justification recorded in `AGENTS.md`. Phase 2 adds `tomli` only as a Python 3.10 fallback for the required TOML config format.
 
 ---
@@ -47,12 +51,13 @@ Review this file:
 - Whenever command structure, safety behavior, provider policy, configuration, or release procedure changes.
 - Before every release, as part of the release checklist.
 - Whenever a new dependency is proposed, to confirm no cloud SDK, telemetry, agent framework, background service, or future-command dependency is introduced.
+- Whenever the LLM contract, provider factory, or adapter behavior changes.
 
 ---
 
-## Phase 1/2/3 non-goals
+## Phase 1–4 non-goals
 
-The following stay outside Phase 1/2/3 unless the requirements documents are formally revised:
+The following stay outside Phase 1–4 unless the requirements documents are formally revised:
 
 - Direct `cw` executable alias.
 - Conventional Commits mode.
@@ -60,8 +65,11 @@ The following stay outside Phase 1/2/3 unless the requirements documents are for
 - Non-interactive operation.
 - Additional local providers or provider plugin discovery.
 - Cloud inference or cloud fallback of any kind.
+- Model download, installation, or runtime management.
+- Retrying across providers.
 - Commit-history or repository-wide semantic analysis.
 - Automatic stage/unstage, branch creation, code changes, PR creation, issue integration, or git configuration/signing management.
 - Agent frameworks, autonomous execution, background services, RAG, embeddings, vector stores, telemetry, web UI, chat UI, voice UI, and multi-user features.
 - Full secret scanning or generated-file classification.
 - Email Improver, Error Explainer, Requirements Reviewer, or any other command.
+- Commit Writer prompt/message processing, interactive review, editor flow, commit creation, and push behavior (these are Phases 5–7).

@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import argparse
 
-from toolsmith import config
+from toolsmith import config, llm
 from toolsmith.git import diff as git_diff
 from toolsmith.git import repository as git_repository
 
 
 def run(args: argparse.Namespace) -> int:
-    """Run the Commit Writer command up to the Phase 3 contract boundary.
+    """Run the Commit Writer command up to the Phase 4 contract boundary.
 
-    Phase 3 resolves the git repository root, validates that staged changes
-    exist, and prepares a bounded staged diff. LLM/provider construction and
-    commit/push creation remain deferred to later phases.
+    Phase 4 resolves configuration, validates the git repository and staged
+    changes, and constructs the shared LLM client through the provider
+    factory. The actual prompt construction, generation, and user review
+    remain deferred to later phases.
     """
     overrides: dict[str, object] = {}
     if args.model is not None:
@@ -27,11 +28,16 @@ def run(args: argparse.Namespace) -> int:
         print("Dry run: no commit or push will be created.")
         return 0
 
-    # Phase 3: read-only git services. Any failure here propagates to the CLI
+    # Read-only git services. Any failure here propagates to the CLI
     # boundary before any LLM/provider is constructed.
     repo_root = git_repository.find_repository_root()
     git_diff.prepare_staged_diff(repo_root, cfg.max_diff_chars)
 
-    # Phase 4+ will call the local LLM, present the accept/edit/reject flow,
-    # and optionally create a commit/push.
+    # Phase 4: construct the local LLM client through the shared factory.
+    # Commands depend only on the shared :class:`llm.LLMClient` contract;
+    # provider-specific transport lives in :mod:`toolsmith.llm.ollama`.
+    llm.create_client(cfg.provider)
+
+    # Phase 5+ will build the prompt, generate a message, present the
+    # accept/edit/reject flow, and optionally create a commit/push.
     return 0

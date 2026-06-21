@@ -1,6 +1,6 @@
 # toolsmith Agent Guidance
 
-**Status:** Phase 3 read-only git repository and staged-diff services
+**Status:** Phase 4 shared LLM contract and local provider adapter
 **Maintainer:** Repository maintainer (single owner until team growth is documented)
 **Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`
 
@@ -8,9 +8,9 @@ This file is a living architecture and ownership record. Any change to command s
 
 ---
 
-## Phase 1–3 objective
+## Phase 1–4 objective
 
-Establish the repository contract and the smallest installable Python `toolsmith` package skeleton before Commit Writer feature implementation begins, then add the read-only git boundary used by `toolsmith cw`.
+Establish the repository contract and the smallest installable Python `toolsmith` package skeleton before Commit Writer feature implementation begins, then add the read-only git boundary and the local-only LLM boundary used by `toolsmith cw`.
 
 Phase 1 delivered:
 
@@ -36,7 +36,15 @@ Phase 3 delivered:
 - Deterministic staged-diff truncation at `max_diff_chars` with an explicit marker.
 - Mapped actionable errors for missing git, outside-repo, no staged changes, and git command failure.
 
-Phase 3 does **not** implement LLM provider calls, commit/push creation, or any git mutation.
+Phase 4 delivered:
+
+- Shared `LLMRequest`, `LLMResponse`, and `LLMClient` contract in `llm/base.py`.
+- A single local Ollama-compatible adapter in `llm/ollama.py` using only standard-library HTTP.
+- Provider factory in `llm/__init__.py` limited to the supported local Phase 1 provider (`ollama`).
+- Actionable error mapping for connection failure, unavailable runtime/model, timeout, malformed payload, and empty output.
+- A fake LLM client utility for command tests, and default pytest tests that pass without Ollama, network access, or a downloaded model.
+
+Phase 4 does **not** implement prompt construction, generation, commit/push creation, or interactive user review.
 
 ---
 
@@ -56,14 +64,14 @@ src/
     errors.py            # error taxonomy and exit-code mapping
     commands/
       __init__.py
-      commit_writer.py   # cw command orchestration (Phase 3: config + read-only git; no LLM/commit yet)
+      commit_writer.py   # cw command orchestration (Phase 4: config + read-only git + shared LLM factory)
     git/
       __init__.py
       repository.py      # repository detection, root resolution, git subprocess runner (Phase 3)
       diff.py            # staged summary/diff collection and truncation (Phase 3)
       commit.py          # commit and push creation (Phase 7)
     llm/
-      __init__.py
+      __init__.py        # provider factory and public exports
       base.py            # shared LLM request/response/client contract (Phase 4)
       ollama.py          # local Ollama-compatible adapter (Phase 4)
     prompts/
@@ -81,9 +89,11 @@ tests/
 Boundary rules:
 
 - `cli.py` – owns argument parsing, subcommand routing, and top-level help. Heavy imports and service construction are deferred to subcommands so `--help` starts quickly. The CLI boundary catches `ToolsmithError`, maps it to the documented exit code, and prints a concise message.
-- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. In Phase 3 it validates configuration, resolves the git repository root, and prepares a bounded staged diff. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor process logic.
+- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. It validates configuration, resolves the git repository root, prepares a bounded staged diff, and constructs the shared LLM client through `llm.create_client()`. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor process logic.
 - `git/` – owns all git subprocess calls. Uses argument arrays, never shell interpolation. Returns typed/domain results or raises mapped `toolsmith` errors.
-- `llm/base.py` – defines the shared `LLMClient` contract and request/response types. `llm/ollama.py` is the sole Phase 1 provider adapter.
+- `llm/base.py` – defines the shared `LLMClient` contract and request/response types. Commands depend only on this protocol.
+- `llm/ollama.py` – is the sole Phase 1 provider adapter. It maps transport and payload failures to actionable responses without leaking Ollama-specific exceptions.
+- `llm/__init__.py` – exposes the shared contract and a provider factory that accepts only the supported local provider.
 - `prompts/commit_writer.py` – owns compact prompt construction and message cleanup/validation helpers.
 - `ui/` – owns terminal prompts and editor invocation. It performs no git or LLM work.
 - `config.py` – merges built-in defaults, user TOML at `~/.config/toolsmith/config.toml`, and supported per-command overrides, with explicit validation.
@@ -100,7 +110,7 @@ Boundary rules:
 - **Runtime dependencies:** none in Phase 1. Phase 2 adds `tomli` as a conditional runtime dependency for Python 3.10 TOML parsing fallback; Python 3.11+ uses the standard-library `tomllib`.
 - **Development dependencies:** `pytest` for automated testing.
 - **Configuration format:** TOML at `~/.config/toolsmith/config.toml`.
-- **Local provider:** Ollama-compatible adapter planned for Phase 4. No cloud provider, fallback, or plugin system is introduced in Phase 1/2/3.
+- **Local provider:** Ollama-compatible adapter in Phase 4 using only standard-library `urllib`. No cloud provider, fallback, or plugin system is introduced in Phase 1–4.
 - **Editor resolution:** planned to resolve `$VISUAL`, then `$EDITOR`, then a documented executable fallback in Phase 6. If no editor is found, fail without committing.
 
 ---
@@ -125,7 +135,7 @@ Manual tests and optional local-provider smoke tests are documented in `planning
 
 - `toolsmith --help` – root help.
 - `toolsmith cw --help` – Commit Writer help, including staged-change preconditions, options, examples, and safety notes.
-- `toolsmith cw` – parses configuration and options; resolves the git repository root; detects and prepares staged changes using only `git diff --cached` data; exits with an actionable error before any LLM/provider construction when git is missing, the directory is not inside a repository, or no staged changes exist. Does not commit, push, stage, unstage, or call an LLM in Phase 3.
+- `toolsmith cw` – parses configuration and options; resolves the git repository root; detects and prepares staged changes using only `git diff --cached` data; constructs the shared local LLM client through `llm.create_client(cfg.provider)` after git validation. Does not generate a message, commit, push, stage, unstage, or call the LLM in Phase 4.
 
 ### Phase 2 options
 
@@ -133,9 +143,9 @@ Manual tests and optional local-provider smoke tests are documented in `planning
 - `--dry-run` – preview behavior without creating a commit, push, LLM call, or reading git state.
 - `--model MODEL` – override the configured model identifier for this run only. This changes only the model string sent to the configured local provider; it never changes the provider class, endpoint policy, or local-only policy.
 
-### Future commands (not implemented in Phase 1/2/3)
+### Future commands (not implemented in Phase 1–4)
 
-The following are explicitly reserved for future planning. They must not be implemented, partially wired, or given speculative dependencies during Phase 1/2/3:
+The following are explicitly reserved for future planning. They must not be implemented, partially wired, or given speculative dependencies during Phase 1–4:
 
 - `toolsmith mail` – Email Improver
 - `toolsmith req` – Requirements Reviewer
@@ -163,6 +173,8 @@ Phase 3 maps the following git errors under `UsageError`/`DependencyError`:
 - `NoStagedChangesError(UsageError)` – no staged changes in the index.
 - `GitError(DependencyError)` – git subprocess failure or unexpected output.
 
+Phase 4 maps LLM adapter failures under `DependencyError` (via `require_success()`). Provider transport failures are converted to actionable responses by the Ollama adapter before reaching command orchestration.
+
 ---
 
 ## Maintainer ownership and update triggers
@@ -173,13 +185,13 @@ Phase 3 maps the following git errors under `UsageError`/`DependencyError`:
   1. This file and `GUARDRAILS.md` still match the implementation.
   2. The architecture map matches the file tree.
   3. The canonical pytest commands still pass.
-  4. No Phase 1/2/3 non-goal has entered dependencies or code.
+  4. No Phase 1–4 non-goal has entered dependencies or code.
 
 ---
 
 ## Deferred decisions
 
-The following decisions are intentionally deferred to later phases and must not be anticipated in Phase 3 code or dependencies:
+The following decisions are intentionally deferred to later phases and must not be anticipated in Phase 4 code or dependencies:
 
 - Direct `cw` executable alias.
 - Conventional Commits mode.
