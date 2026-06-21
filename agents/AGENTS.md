@@ -1,6 +1,7 @@
 # toolsmith Agent Guidance
 
-**Status:** Phase 7 safe commit creation and optional non-forced push
+**Status:** Phase 9 release readiness
+**Phase 9 review:** README, CLI help, manual acceptance record, and release checklist were verified against the implemented architecture, safety behavior, and canonical test commands.
 **Maintainer:** Repository maintainer (single owner until team growth is documented)
 **Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`
 

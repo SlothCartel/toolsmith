@@ -20,7 +20,7 @@ Preconditions:
 
 Options:
   --no-push   Skip the "push current branch?" prompt after a successful commit.
-  --dry-run   Preview behavior without creating a commit, push, or LLM call.
+  --dry-run   Generate and display the proposed message without committing, pushing, or prompting.
   --model     Override the LLM model identifier for this run only.
 
 Examples:
@@ -67,7 +67,7 @@ def create_parser() -> argparse.ArgumentParser:
     cw_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would happen without creating a commit or push.",
+        help="Generate and display the proposed commit message without creating a commit or push prompt.",
     )
     cw_parser.add_argument(
         "--model",
