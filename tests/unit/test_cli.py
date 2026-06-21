@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -49,6 +50,15 @@ def fake_llm_client(monkeypatch):
     return client
 
 
+@pytest.fixture
+def accept_no_push(monkeypatch):
+    """Patch interactive prompts to accept the message and decline the push prompt."""
+    def _auto_input(prompt: str = "") -> str:
+        return "a" if "Accept" in prompt else ""
+
+    monkeypatch.setattr("builtins.input", _auto_input)
+
+
 def test_root_help(capsys):
     with pytest.raises(SystemExit) as exc_info:
         create_parser().parse_args(["--help"])
@@ -86,7 +96,7 @@ def test_main_no_args_prints_help(capsys):
 
 
 def test_main_cw_no_args_returns_zero(
-    capsys, monkeypatch, tmp_path, fake_llm_client
+    capsys, monkeypatch, tmp_path, fake_llm_client, accept_no_push
 ):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
@@ -97,17 +107,24 @@ def test_main_cw_no_args_returns_zero(
     assert "Error" not in captured.err
 
 
-def test_main_cw_dry_run(capsys, monkeypatch, tmp_path):
+def test_main_cw_dry_run(
+    capsys, monkeypatch, tmp_path, fake_llm_client
+):
+    repo = _make_staged_repo(tmp_path)
+    monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
-    code = main(["cw", "--dry-run"])
+    # Dry-run must not prompt; if it does, this would hang or raise.
+    with patch("builtins.input", side_effect=Exception("prompted")):
+        code = main(["cw", "--dry-run"])
     assert code == 0
     captured = capsys.readouterr()
+    assert "Fix staged diff detection" in captured.out
     assert "Dry run" in captured.out
     assert "no commit or push" in captured.out
 
 
 def test_main_cw_no_push_parses(
-    capsys, monkeypatch, tmp_path, fake_llm_client
+    capsys, monkeypatch, tmp_path, fake_llm_client, accept_no_push
 ):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
@@ -118,7 +135,7 @@ def test_main_cw_no_push_parses(
 
 
 def test_main_cw_model_override_parses(
-    capsys, monkeypatch, tmp_path, fake_llm_client
+    capsys, monkeypatch, tmp_path, fake_llm_client, accept_no_push
 ):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
@@ -203,6 +220,19 @@ def test_main_cw_no_staged_changes_exits_usage_error(
     captured = capsys.readouterr()
     assert "Error:" in captured.err
     assert "staged" in captured.err.lower()
+
+
+def test_main_cw_reject_returns_cancel_exit_code(
+    capsys, monkeypatch, tmp_path, fake_llm_client
+):
+    repo = _make_staged_repo(tmp_path)
+    monkeypatch.chdir(str(repo))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with patch("builtins.input", return_value="r"):
+        code = main(["cw"])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "no commit" in captured.err.lower()
 
 
 def test_main_version(capsys):

@@ -46,7 +46,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
+addopts = "-q -m 'not manual'"
 markers = [
     "manual: optional manual / local-provider smoke tests (excluded by default)",
 ]

@@ -1,6 +1,6 @@
 # toolsmith Agent Guidance
 
-**Status:** Phase 5 Commit Writer prompt construction and message cleanup/validation
+**Status:** Phase 6 interactive review, editor flow, and dry-run behavior
 **Maintainer:** Repository maintainer (single owner until team growth is documented)
 **Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`
 
@@ -54,6 +54,16 @@ Phase 5 delivered:
 
 Phase 5 does **not** implement interactive review, editor invocation, commit/push creation, or staging behavior.
 
+Phase 6 delivered:
+
+- Interactive accept/edit/reject prompts in `ui/prompts.py`. The proposed message is always displayed first; blank or invalid input reprompts; reject and EOF return `CancelError` with a clear no-commit message; Ctrl+C propagates to the CLI boundary.
+- External editor resolution in `ui/editor.py`: `$VISUAL`, then `$EDITOR`, then the documented executable fallback `vi`. The editor is invoked without a shell and receives a temporary file containing **only** the proposed commit message. The temporary file is removed in a `finally`-style path. Non-zero editor exits become `DependencyError`; signal termination and Ctrl+C become `CancelError`.
+- The Commit Writer orchestration in `commands/commit_writer.py` now displays the generated message, enters an accept/edit/reject loop, re-cleans and re-validates edited messages, and calls fake commit/push services so the full interactive flow is testable without mutating any repository.
+- `--dry-run` now performs generation, cleanup, warning, and display, then prints a dry-run notice and exits successfully before any approval, commit, or push prompt.
+- Unit tests for prompts, editor, orchestration, and CLI dry-run/reject/cancellation paths.
+
+Phase 6 does **not** create real git commits or pushes. Real mutation belongs to Phase 7.
+
 ---
 
 ## Architecture map
@@ -72,12 +82,12 @@ src/
     errors.py            # error taxonomy and exit-code mapping
     commands/
       __init__.py
-      commit_writer.py   # cw command orchestration (Phase 4: config + read-only git + shared LLM factory)
+      commit_writer.py   # cw command orchestration (Phases 5-6: config + read-only git + shared LLM factory + interactive review + fake commit/push services)
     git/
       __init__.py
       repository.py      # repository detection, root resolution, git subprocess runner (Phase 3)
       diff.py            # staged summary/diff collection and truncation (Phase 3)
-      commit.py          # commit and push creation (Phase 7)
+      commit.py          # commit/push service interface + Phase 6 fake implementations (Phase 7: real services)
     llm/
       __init__.py        # provider factory and public exports
       base.py            # shared LLM request/response/client contract (Phase 4)
@@ -87,8 +97,8 @@ src/
       commit_writer.py   # prompt construction and message cleanup (Phase 5)
     ui/
       __init__.py
-      prompts.py         # terminal accept/edit/reject prompts (Phase 6)
-      editor.py          # $VISUAL/$EDITOR invocation (Phase 6)
+      prompts.py         # terminal accept/edit/reject prompts (Phase 6, implemented)
+      editor.py          # $VISUAL/$EDITOR resolution and invocation (Phase 6, implemented)
 tests/
   unit/                  # unit, CLI, and mocked-LLM tests
   integration/           # temporary-git repository tests
@@ -119,7 +129,7 @@ Boundary rules:
 - **Development dependencies:** `pytest` for automated testing.
 - **Configuration format:** TOML at `~/.config/toolsmith/config.toml`.
 - **Local provider:** Ollama-compatible adapter in Phase 4 using only standard-library `urllib`. No cloud provider, fallback, or plugin system is introduced in Phase 1–4.
-- **Editor resolution:** planned to resolve `$VISUAL`, then `$EDITOR`, then a documented executable fallback in Phase 6. If no editor is found, fail without committing.
+- **Editor resolution:** resolves `$VISUAL`, then `$EDITOR`, then the documented executable fallback `vi`. If no editor is found, the command fails with a `DependencyError` and no commit is attempted.
 
 ---
 
@@ -160,6 +170,13 @@ The following are explicitly reserved for future planning. They must not be impl
 - `toolsmith err` – Error Explainer
 
 Implementation of any future command requires a revised scope/requirements document and a separate implementation plan.
+
+### Phase 6 non-goals (real mutation remains Phase 7)
+
+- Real `git commit` or `git push` creation (Phase 7).
+- Hook bypass, signing management, or automatic staging/unstaging.
+- Regeneration, non-interactive mode, additional providers, or future commands.
+
 
 ---
 

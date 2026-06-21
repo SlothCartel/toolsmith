@@ -1,6 +1,6 @@
 # toolsmith Phase 4 Guardrails
 
-**Status:** Phase 5 invariants
+**Status:** Phase 6 invariants
 **Maintainer:** Repository maintainer
 **Requirement sources:** `planning/project_implementation_plan.md` Section 3, `planning/req_spec.md`, `planning/scope.md`
 
@@ -29,6 +29,8 @@ This file records the safety and scope invariants that every implementation phas
 - **No automatic push.** Never push without explicit confirmation in the current invocation. Empty input at the push prompt means no. Never force push.
 - **Preserve git hooks and signing.** Preserve normal git hooks and the user's existing signing configuration; do not bypass or manage either.
 - **Commit exactly the staged state.** Commit exactly the index state git sees when the commit command runs. Never stage/unstage or implement partial-commit logic.
+- **Dry-run does not approve, commit, or push.** `--dry-run` may generate and display the proposed message, but it must exit before any approval prompt, commit service call, or push prompt.
+- **Edited messages must be re-displayed and re-validated before commit.** An edited message is cleaned and validated again; an empty or invalid edited message cannot proceed to commit or push.
 
 ---
 
@@ -55,9 +57,9 @@ Review this file:
 
 ---
 
-## Phase 5 non-goals
+## Phase 6 non-goals
 
-The following stay outside Phase 1–4 unless the requirements documents are formally revised:
+The following stay outside Phase 1–6 unless the requirements documents are formally revised:
 
 - Direct `cw` executable alias.
 - Conventional Commits mode.
@@ -72,4 +74,4 @@ The following stay outside Phase 1–4 unless the requirements documents are for
 - Agent frameworks, autonomous execution, background services, RAG, embeddings, vector stores, telemetry, web UI, chat UI, voice UI, and multi-user features.
 - Full secret scanning or generated-file classification.
 - Email Improver, Error Explainer, Requirements Reviewer, or any other command.
-- Commit Writer interactive review, editor flow, commit creation, and push behavior (these are Phases 6–7).
+- Real `git commit` and `git push` creation (these are Phase 7).

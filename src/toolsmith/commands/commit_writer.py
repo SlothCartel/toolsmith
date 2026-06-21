@@ -6,43 +6,21 @@ import argparse
 import sys
 
 from toolsmith import config, llm
+from toolsmith.errors import DependencyError
+from toolsmith.git import commit as git_commit
 from toolsmith.git import diff as git_diff
 from toolsmith.git import repository as git_repository
 from toolsmith.prompts import commit_writer as commit_prompts
+from toolsmith.ui import editor
+from toolsmith.ui import prompts as ui_prompts
 
 
-def run(args: argparse.Namespace) -> int:
-    """Run the Commit Writer command up to the Phase 5 contract boundary.
-
-    Phase 5 resolves configuration, validates the git repository and staged
-    changes, builds a deterministic prompt, calls the configured local LLM,
-    cleans and validates the generated message, prints any non-blocking
-    warning, and displays the proposed message. The interactive
-    accept/edit/reject flow, commit creation, and push behavior remain
-    deferred to later phases.
-    """
-    overrides: dict[str, object] = {}
-    if args.model is not None:
-        overrides["model"] = args.model
-    overrides["no_push"] = args.no_push
-
-    cfg = config.build_config(cli_overrides=overrides)
-
-    if args.dry_run:
-        print("Dry run: no commit or push will be created.")
-        return 0
-
-    # Read-only git services. Any failure here propagates to the CLI
-    # boundary before any LLM/provider is constructed.
-    repo_root = git_repository.find_repository_root()
-    prepared = git_diff.prepare_staged_diff(repo_root, cfg.max_diff_chars)
-
-    # Phase 4: construct the local LLM client through the shared factory.
-    # Commands depend only on the shared :class:`llm.LLMClient` contract;
-    # provider-specific transport lives in :mod:`toolsmith.llm.ollama`.
-    client = llm.create_client(cfg.provider)
-
-    # Phase 5: build the prompt, generate the message, and clean/validate it.
+def _generate_message(
+    cfg: config.Config,
+    prepared: git_diff.PreparedDiff,
+    client: llm.LLMClient,
+) -> commit_prompts.CommitMessage:
+    """Generate, clean, and validate a commit message from staged changes."""
     request = llm.LLMRequest(
         prompt=commit_prompts.build_commit_prompt(prepared),
         model=cfg.model,
@@ -55,11 +33,97 @@ def run(args: argparse.Namespace) -> int:
 
     cleaned_message = commit_prompts.clean_commit_message(raw_message)
     validated = commit_prompts.validate_commit_message(cleaned_message)
+    return validated
+
+
+def _display_message(message: commit_prompts.CommitMessage) -> None:
+    """Print the proposed message and any non-blocking warnings."""
+    # Reassemble the conventional subject/body form for display.
+    text = message.subject
+    if message.body:
+        text += "\n\n" + message.body
+    print(text)
+
+
+def run(
+    args: argparse.Namespace,
+    *,
+    commit_service: git_commit.CommitService | None = None,
+    push_service: git_commit.PushService | None = None,
+) -> int:
+    """Run the Commit Writer command through the Phase 6 review boundary.
+
+    Phase 6 resolves configuration, validates the git repository and staged
+    changes, builds a deterministic prompt, calls the configured local LLM,
+    cleans and validates the generated message, displays it, and asks the
+    user to accept, edit, or reject. Edited messages are re-validated. Dry-run
+    mode performs generation and display but exits before approval, commit,
+    or push. Real commit and push mutation remain behind fake services in
+    this phase.
+    """
+    overrides: dict[str, object] = {}
+    if args.model is not None:
+        overrides["model"] = args.model
+    overrides["no_push"] = args.no_push
+
+    cfg = config.build_config(cli_overrides=overrides)
+
+    # Read-only git services. Any failure here propagates to the CLI
+    # boundary before any LLM/provider is constructed.
+    repo_root = git_repository.find_repository_root()
+    prepared = git_diff.prepare_staged_diff(repo_root, cfg.max_diff_chars)
+
+    # Phase 4: construct the local LLM client through the shared factory.
+    client = llm.create_client(cfg.provider)
+
+    validated = _generate_message(cfg, prepared, client)
 
     for warning in validated.warnings:
         print(warning, file=sys.stderr)
 
-    print(cleaned_message)
+    _display_message(validated)
 
-    # Phase 6+ will add the accept/edit/reject flow and commit/push creation.
+    if args.dry_run:
+        print("Dry run: no commit or push will be created.")
+        return 0
+
+    # Phase 6: interactive accept/edit/reject loop.
+    message_text = validated.subject
+    if validated.body:
+        message_text += "\n\n" + validated.body
+
+    while True:
+        choice = ui_prompts.prompt_accept_edit_reject(message_text)
+        if choice == "edit":
+            edited = editor.edit_message(message_text)
+            cleaned = commit_prompts.clean_commit_message(edited)
+            revalidated = commit_prompts.validate_commit_message(cleaned)
+            message_text = revalidated.subject
+            if revalidated.body:
+                message_text += "\n\n" + revalidated.body
+            for warning in revalidated.warnings:
+                print(warning, file=sys.stderr)
+            continue
+
+        # choice == "accept"
+        break
+
+    # Real commit creation belongs to Phase 7. Phase 6 uses a fake service
+    # so the interactive flow can be tested end-to-end without mutation.
+    service = commit_service or git_commit.NoopCommitService()
+    commit_result = service.create_commit(
+        repository_root=repo_root,
+        message=message_text,
+    )
+
+    if not commit_result.success:
+        # Surface the failure; Phase 7 will map git stderr to actionable errors.
+        raise DependencyError(commit_result.message or "Commit failed.")
+
+    push_service = push_service or git_commit.NoopPushService()
+    if cfg.prompt_push and ui_prompts.prompt_push():
+        push_result = push_service.push(repository_root=repo_root)
+        if not push_result.success:
+            raise DependencyError(push_result.message or "Push failed.")
+
     return 0

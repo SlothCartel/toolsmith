@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = str(REPO_ROOT / "src")
 
@@ -51,8 +53,14 @@ def test_installed_entry_point_help():
     assert "cw" in result.stdout
 
 
+@pytest.mark.manual
 def test_installed_entry_point_cw_dry_run(tmp_path):
-    """`toolsmith cw --dry-run` exits cleanly without requiring a provider."""
+    """`toolsmith cw --dry-run` exits cleanly when a local provider is available.
+
+    Phase 6 makes --dry-run perform real generation and display, so this test
+    requires a running local LLM runtime. It is excluded from the default test
+    run by the ``manual`` marker.
+    """
     repo = _make_staged_repo(tmp_path)
     result = _run_toolsmith("cw", "--dry-run", cwd=str(repo))
     assert result.returncode == 0
