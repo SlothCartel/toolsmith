@@ -1,0 +1,10 @@
+planning/*
+.pytest_cache/*
+tests/integration/__pycache__/*
+tests/unit/__pycache__/*
+src/toolsmith/__pycache__/*
+src/toolsmith/commands/__pycache__/*
+src/toolsmith/git/__pycache__/*
+src/toolsmith/llm/__pycache__/*
+src/toolsmith/prompts/__pycache__/*
+src/toolsmith/ui/__pycache__/*
