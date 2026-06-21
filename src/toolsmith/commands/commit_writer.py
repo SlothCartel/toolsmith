@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from toolsmith import config, llm
-from toolsmith.errors import DependencyError
+from toolsmith.errors import GitError, PushError
 from toolsmith.git import commit as git_commit
 from toolsmith.git import diff as git_diff
 from toolsmith.git import repository as git_repository
@@ -51,15 +51,22 @@ def run(
     commit_service: git_commit.CommitService | None = None,
     push_service: git_commit.PushService | None = None,
 ) -> int:
-    """Run the Commit Writer command through the Phase 6 review boundary.
+    """Run the Commit Writer command through the accept/edit/reject boundary.
 
-    Phase 6 resolves configuration, validates the git repository and staged
-    changes, builds a deterministic prompt, calls the configured local LLM,
-    cleans and validates the generated message, displays it, and asks the
-    user to accept, edit, or reject. Edited messages are re-validated. Dry-run
-    mode performs generation and display but exits before approval, commit,
-    or push. Real commit and push mutation remain behind fake services in
-    this phase.
+    The command resolves configuration, validates the git repository and
+    staged changes, builds a deterministic prompt, calls the configured local
+    LLM, cleans and validates the generated message, displays it, and asks
+    the user to accept, edit, or reject. After explicit acceptance it creates
+    a real git commit using ``git commit -F <message-file>``, preserving
+    normal hooks and signing. When configuration allows, it then prompts
+    whether to run an ordinary ``git push``; only an explicit yes attempts the
+    push. A push failure is reported separately and does not roll back the
+    successful commit.
+
+    Dry-run mode performs generation and display but exits before approval,
+    commit, or push. Real commit and push mutation use the default
+    :class:`GitCommitService` and :class:`GitPushService` unless other
+    services are injected (primarily for tests).
     """
     overrides: dict[str, object] = {}
     if args.model is not None:
@@ -108,22 +115,26 @@ def run(
         # choice == "accept"
         break
 
-    # Real commit creation belongs to Phase 7. Phase 6 uses a fake service
-    # so the interactive flow can be tested end-to-end without mutation.
-    service = commit_service or git_commit.NoopCommitService()
+    # Phase 7: create the real commit, or use an injected service for tests.
+    service = commit_service or git_commit.GitCommitService()
     commit_result = service.create_commit(
         repository_root=repo_root,
         message=message_text,
     )
 
     if not commit_result.success:
-        # Surface the failure; Phase 7 will map git stderr to actionable errors.
-        raise DependencyError(commit_result.message or "Commit failed.")
+        raise GitError(commit_result.message or "Commit failed.")
 
-    push_service = push_service or git_commit.NoopPushService()
-    if cfg.prompt_push and ui_prompts.prompt_push():
-        push_result = push_service.push(repository_root=repo_root)
-        if not push_result.success:
-            raise DependencyError(push_result.message or "Push failed.")
+    print(commit_result.message or "Commit created.")
+
+    if cfg.prompt_push:
+        push_svc = push_service or git_commit.GitPushService()
+        if ui_prompts.prompt_push():
+            push_result = push_svc.push(repository_root=repo_root)
+            if not push_result.success:
+                raise PushError(
+                    f"Commit was created, but push failed: {push_result.message}"
+                )
+            print(push_result.message or "Push completed.")
 
     return 0

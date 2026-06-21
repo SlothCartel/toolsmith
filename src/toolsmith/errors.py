@@ -39,6 +39,13 @@ class GitError(DependencyError):
     """A git subprocess command failed or produced an unexpected result."""
 
 
+class PushError(DependencyError):
+    """Commit was created, but the subsequent ordinary git push failed.
+
+    The successful commit is intentionally not rolled back.
+    """
+
+
 class EmptyCommitMessageError(DependencyError):
     """The LLM produced no usable commit message after cleanup."""
 
