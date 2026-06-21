@@ -1,4 +1,4 @@
-# toolsmith
+# toolsmith - CHanges
 
 A lightweight, modular, local-first command-line productivity assistant for developers.
 

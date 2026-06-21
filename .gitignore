@@ -8,3 +8,4 @@ src/toolsmith/git/__pycache__/*
 src/toolsmith/llm/__pycache__/*
 src/toolsmith/prompts/__pycache__/*
 src/toolsmith/ui/__pycache__/*
+src/toolsmith.egg-info/*

@@ -221,3 +221,22 @@ def test_empty_response_text_maps_to_empty_output():
 
     assert response.success is False
     assert "empty output" in response.error
+    assert "ollama logs" in response.error
+
+
+def test_empty_response_with_thinking_maps_to_reasoning_error():
+    client = OllamaClient()
+    request = _make_request()
+    mock = _mock_response({
+        "response": "",
+        "done_reason": "length",
+            "thinking": "1. Analyze the staged files...\n2. Draft a message",
+    })
+
+    with patch("toolsmith.llm.ollama.urlopen", return_value=mock):
+        response = client.generate(request)
+
+    assert response.success is False
+    assert "empty output" in response.error
+    assert "reasoning/thinking output" in response.error
+    assert "non-reasoning model" in response.error
