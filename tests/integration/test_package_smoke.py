@@ -51,12 +51,12 @@ def test_installed_entry_point_help():
     assert "cw" in result.stdout
 
 
-def test_installed_entry_point_cw_phase_3_contract(tmp_path):
-    """`toolsmith cw` resolves git state and exits cleanly when staged changes exist."""
+def test_installed_entry_point_cw_dry_run(tmp_path):
+    """`toolsmith cw --dry-run` exits cleanly without requiring a provider."""
     repo = _make_staged_repo(tmp_path)
-    result = _run_toolsmith("cw", cwd=str(repo))
+    result = _run_toolsmith("cw", "--dry-run", cwd=str(repo))
     assert result.returncode == 0
-    assert "Error" not in result.stderr
+    assert "Dry run" in result.stdout
 
 
 def test_installed_entry_point_cw_outside_repository_exits_nonzero(tmp_path):

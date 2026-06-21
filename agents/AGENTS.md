@@ -1,6 +1,6 @@
 # toolsmith Agent Guidance
 
-**Status:** Phase 4 shared LLM contract and local provider adapter
+**Status:** Phase 5 Commit Writer prompt construction and message cleanup/validation
 **Maintainer:** Repository maintainer (single owner until team growth is documented)
 **Requirement sources:** `planning/req_spec.md`, `planning/scope.md`, `planning/project_implementation_plan.md`
 
@@ -8,9 +8,9 @@ This file is a living architecture and ownership record. Any change to command s
 
 ---
 
-## Phase 1–4 objective
+## Phase 1–5 objective
 
-Establish the repository contract and the smallest installable Python `toolsmith` package skeleton before Commit Writer feature implementation begins, then add the read-only git boundary and the local-only LLM boundary used by `toolsmith cw`.
+Establish the repository contract and the smallest installable Python `toolsmith` package skeleton, add the read-only git boundary and the local-only LLM boundary, then implement the Commit Writer prompt builder and generated-message cleanup/validation used by `toolsmith cw`.
 
 Phase 1 delivered:
 
@@ -44,7 +44,15 @@ Phase 4 delivered:
 - Actionable error mapping for connection failure, unavailable runtime/model, timeout, malformed payload, and empty output.
 - A fake LLM client utility for command tests, and default pytest tests that pass without Ollama, network access, or a downloaded model.
 
-Phase 4 does **not** implement prompt construction, generation, commit/push creation, or interactive user review.
+Phase 5 delivered:
+
+- Deterministic Commit Writer prompt builder in `prompts/commit_writer.py`.
+- Anti-hallucination constraints and required output shape in the prompt.
+- Conservative commit-message cleanup for common model wrappers.
+- Validation that rejects empty output and emits a non-blocking warning for subjects over 72 characters.
+- Focused unit tests for prompt content, cleanup/validation, and mocked-LLM orchestration.
+
+Phase 5 does **not** implement interactive review, editor invocation, commit/push creation, or staging behavior.
 
 ---
 
@@ -89,7 +97,7 @@ tests/
 Boundary rules:
 
 - `cli.py` – owns argument parsing, subcommand routing, and top-level help. Heavy imports and service construction are deferred to subcommands so `--help` starts quickly. The CLI boundary catches `ToolsmithError`, maps it to the documented exit code, and prints a concise message.
-- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. It validates configuration, resolves the git repository root, prepares a bounded staged diff, and constructs the shared LLM client through `llm.create_client()`. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor process logic.
+- `commands/commit_writer.py` – orchestrates the Commit Writer workflow. It validates configuration, resolves the git repository root, prepares a bounded staged diff, builds a deterministic prompt, sends the request through the shared LLM client, and cleans, validates, and displays the generated message. It does not contain subprocess details, provider transport, config parsing, prompt text, or editor/interactive logic.
 - `git/` – owns all git subprocess calls. Uses argument arrays, never shell interpolation. Returns typed/domain results or raises mapped `toolsmith` errors.
 - `llm/base.py` – defines the shared `LLMClient` contract and request/response types. Commands depend only on this protocol.
 - `llm/ollama.py` – is the sole Phase 1 provider adapter. It maps transport and payload failures to actionable responses without leaking Ollama-specific exceptions.
@@ -135,7 +143,7 @@ Manual tests and optional local-provider smoke tests are documented in `planning
 
 - `toolsmith --help` – root help.
 - `toolsmith cw --help` – Commit Writer help, including staged-change preconditions, options, examples, and safety notes.
-- `toolsmith cw` – parses configuration and options; resolves the git repository root; detects and prepares staged changes using only `git diff --cached` data; constructs the shared local LLM client through `llm.create_client(cfg.provider)` after git validation. Does not generate a message, commit, push, stage, unstage, or call the LLM in Phase 4.
+- `toolsmith cw` – parses configuration and options; resolves the git repository root; detects and prepares staged changes using only `git diff --cached` data; builds a deterministic prompt from the staged summary and bounded diff; sends it to the configured local LLM; cleans and validates the response; prints any non-blocking warning; and displays the proposed commit message. Does not implement interactive accept/edit/reject, commit, push, stage, or unstage.
 
 ### Phase 2 options
 
@@ -185,7 +193,7 @@ Phase 4 maps LLM adapter failures under `DependencyError` (via `require_success(
   1. This file and `GUARDRAILS.md` still match the implementation.
   2. The architecture map matches the file tree.
   3. The canonical pytest commands still pass.
-  4. No Phase 1–4 non-goal has entered dependencies or code.
+  4. No Phase 5 non-goal has entered dependencies or code.
 
 ---
 

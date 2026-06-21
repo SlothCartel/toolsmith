@@ -39,6 +39,10 @@ class GitError(DependencyError):
     """A git subprocess command failed or produced an unexpected result."""
 
 
+class EmptyCommitMessageError(DependencyError):
+    """The LLM produced no usable commit message after cleanup."""
+
+
 def render_message(exc: BaseException) -> str:
     """Return a concise, user-facing message for an exception."""
     return str(exc) if str(exc) else type(exc).__name__

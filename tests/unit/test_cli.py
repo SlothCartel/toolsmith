@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from toolsmith.cli import create_parser, main
+from toolsmith.llm.base import LLMResponse
+
+from .fake_llm import FakeLLMClient
 
 
 def _make_staged_repo(tmp_path: Path) -> Path:
@@ -28,6 +31,22 @@ def _make_staged_repo(tmp_path: Path) -> Path:
         capture_output=True,
     )
     return repo
+
+
+@pytest.fixture
+def fake_llm_client(monkeypatch):
+    """Provide a deterministic LLM client so `toolsmith cw` tests need no runtime."""
+    client = FakeLLMClient(
+        response=LLMResponse(
+            text="Fix staged diff detection\n\nUse the cached diff.",
+            success=True,
+        )
+    )
+    monkeypatch.setattr(
+        "toolsmith.commands.commit_writer.llm.create_client",
+        lambda provider: client,
+    )
+    return client
 
 
 def test_root_help(capsys):
@@ -66,7 +85,9 @@ def test_main_no_args_prints_help(capsys):
     assert "cw" in captured.out
 
 
-def test_main_cw_no_args_returns_zero(capsys, monkeypatch, tmp_path):
+def test_main_cw_no_args_returns_zero(
+    capsys, monkeypatch, tmp_path, fake_llm_client
+):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -85,7 +106,9 @@ def test_main_cw_dry_run(capsys, monkeypatch, tmp_path):
     assert "no commit or push" in captured.out
 
 
-def test_main_cw_no_push_parses(capsys, monkeypatch, tmp_path):
+def test_main_cw_no_push_parses(
+    capsys, monkeypatch, tmp_path, fake_llm_client
+):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -94,7 +117,9 @@ def test_main_cw_no_push_parses(capsys, monkeypatch, tmp_path):
     assert "Error" not in capsys.readouterr().err
 
 
-def test_main_cw_model_override_parses(capsys, monkeypatch, tmp_path):
+def test_main_cw_model_override_parses(
+    capsys, monkeypatch, tmp_path, fake_llm_client
+):
     repo = _make_staged_repo(tmp_path)
     monkeypatch.chdir(str(repo))
     monkeypatch.setenv("HOME", str(tmp_path))

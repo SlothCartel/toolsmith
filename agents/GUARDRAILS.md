@@ -1,6 +1,6 @@
 # toolsmith Phase 4 Guardrails
 
-**Status:** Phase 4 invariants
+**Status:** Phase 5 invariants
 **Maintainer:** Repository maintainer
 **Requirement sources:** `planning/project_implementation_plan.md` Section 3, `planning/req_spec.md`, `planning/scope.md`
 
@@ -10,13 +10,13 @@ This file records the safety and scope invariants that every implementation phas
 
 ## LLM and data-locality guardrails
 
-- **Local-only LLM processing.** All LLM processing must be local in Phase 1–4. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
+- **Local-only LLM processing.** All LLM processing must be local in Phase 1–5. toolsmith must not send diffs, filenames, repository metadata, or commit messages to a cloud service and must not silently fall back to one.
 - **No cloud default.** The default provider configuration must assume local model execution. No cloud provider may be configured or implied by defaults.
 - **Staged-diff-only input.** Only the staged git index is input to prompt preparation. Never add unstaged changes, repository history, repository-wide analysis, or unrelated files to the prompt.
 - **No diff persistence.** Do not persist staged diffs in logs, telemetry, caches, or durable temporary files.
-- **No telemetry.** Phase 1–4 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
+- **No telemetry.** Phase 1–5 must not include telemetry, usage analytics, or network calls unrelated to the configured local provider.
 - **Model override is local-only.** The `--model` option changes only the model identifier passed to the configured local provider. It must never change the provider class, endpoint policy, or local-only policy.
-- **Supported provider is explicit and local.** The only Phase 1–4 provider is the local Ollama-compatible adapter. Provider selection must reject unsupported providers before any generation attempt. No cloud, remote, or network fallback may be attempted.
+- **Supported provider is explicit and local.** The only Phase 1–5 provider is the local Ollama-compatible adapter. Provider selection must reject unsupported providers before any generation attempt. No cloud, remote, or network fallback may be attempted.
 
 ---
 
@@ -37,9 +37,9 @@ This file records the safety and scope invariants that every implementation phas
 - **No cloud SDKs or agent frameworks.** Dependencies must not include cloud SDKs, agent frameworks, background-service frameworks, telemetry libraries, RAG/embedding/vector-store libraries, web/chat/voice UI frameworks, workflow orchestrators, or public API clients.
 - **No future-command implementation.** Do not implement Email Improver, Error Explainer, Requirements Reviewer, or any command other than Commit Writer in Phase 1–4. Keep future extensibility to clear command and shared-service boundaries; do not build speculative abstractions for commands that do not yet exist.
 - **No background services or daemons.** Phase 1–4 must not include long-running background services, daemons, or servers.
-- **No provider plugin system.** Phase 1–4 supports exactly one local provider. Do not add plugin discovery, dynamic provider loading, or a generic provider registry.
-- **No model download or runtime management.** Phase 1–4 does not download, install, start, or manage the local LLM runtime or model files. The user is responsible for having Ollama and the configured model available.
-- **No retry chain across providers.** Phase 1–4 does not retry failed LLM calls or fall back to alternative providers.
+- **No provider plugin system.** Phase 1–5 supports exactly one local provider. Do not add plugin discovery, dynamic provider loading, or a generic provider registry.
+- **No model download or runtime management.** Phase 1–5 does not download, install, start, or manage the local LLM runtime or model files. The user is responsible for having Ollama and the configured model available.
+- **No retry chain across providers.** Phase 1–5 does not retry failed LLM calls or fall back to alternative providers.
 - **Minimal dependencies.** Prefer the standard library. Each non-development dependency added in a later phase must have an explicit Phase 1+ justification recorded in `AGENTS.md`. Phase 2 adds `tomli` only as a Python 3.10 fallback for the required TOML config format.
 
 ---
@@ -55,7 +55,7 @@ Review this file:
 
 ---
 
-## Phase 1–4 non-goals
+## Phase 5 non-goals
 
 The following stay outside Phase 1–4 unless the requirements documents are formally revised:
 
@@ -72,4 +72,4 @@ The following stay outside Phase 1–4 unless the requirements documents are for
 - Agent frameworks, autonomous execution, background services, RAG, embeddings, vector stores, telemetry, web UI, chat UI, voice UI, and multi-user features.
 - Full secret scanning or generated-file classification.
 - Email Improver, Error Explainer, Requirements Reviewer, or any other command.
-- Commit Writer prompt/message processing, interactive review, editor flow, commit creation, and push behavior (these are Phases 5–7).
+- Commit Writer interactive review, editor flow, commit creation, and push behavior (these are Phases 6–7).
