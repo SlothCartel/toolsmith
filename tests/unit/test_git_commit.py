@@ -200,3 +200,43 @@ class TestGitPushService:
         assert captured_args
         push_args = captured_args[0]
         assert push_args == ["push"]
+
+
+
+def test_temporary_message_file_contains_only_message(tmp_path, monkeypatch):
+    """The secure temp file used for `git commit -F` holds only the message."""
+    repo = _init_repo(tmp_path)
+    _write_and_stage(repo, "file.txt", "hello")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_git(cwd, *args, check=True):
+        assert args[:2] == ("commit", "-F")
+        message_file = Path(args[2])
+        assert message_file.exists()
+        contents = message_file.read_text(encoding="utf-8")
+        captured["contents"] = contents
+        captured["message_file"] = str(message_file)
+
+        class _Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return _Result()
+
+    monkeypatch.setattr("toolsmith.git.commit._run_git", fake_run_git)
+
+    message = """Add greeting
+
+Detailed body."""
+    service = git_commit.GitCommitService()
+    result = service.create_commit(repository_root=repo, message=message)
+
+    assert result.success is True
+    assert captured["contents"] == message
+    # Staged diff data must never be written into the commit-message file.
+    assert "diff" not in captured["contents"].lower()
+    assert "@@" not in captured["contents"]
+    assert "Binary files" not in captured["contents"]
+    # The file is cleaned up by the service.
+    assert not Path(captured["message_file"]).exists()

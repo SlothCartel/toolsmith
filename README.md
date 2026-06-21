@@ -19,13 +19,40 @@ Install in editable mode with test dependencies:
 pip install -e ".[dev]"
 ```
 
-Run tests:
+Run the canonical automated test suites. The default run excludes any test that
+needs a live LLM provider:
 
 ```bash
 pytest
 pytest tests/unit
 pytest tests/integration
 ```
+
+### Optional local-provider smoke test
+
+If you have a running local Ollama-compatible runtime and the configured model,
+you can run the excluded manual smoke test:
+
+```bash
+pytest -m manual
+```
+
+Do not run the manual tests in CI without a runtime, and do not let the test suite
+download or install models automatically.
+
+### Requirement-to-test traceability
+
+See `tests/TRACEABILITY.md` for the mapping between Phase 8 requirements,
+safety invariants, and the tests that validate them.
+
+### Performance notes
+
+- `toolsmith --help` is smoke-tested to start in well under 2 seconds on warm hardware.
+- Prompt size is structurally bounded by the configured `max_diff_chars` plus a small
+  fixed instruction overhead; see `tests/unit/test_commit_writer_prompt.py`.
+- Actual LLM generation times depend heavily on hardware, model, and load. Treat any
+  "warm runtime under 3 s / 8 s" targets as manual benchmarks, not deterministic CI
+  assertions.
 
 ## Architecture
 

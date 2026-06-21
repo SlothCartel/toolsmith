@@ -176,3 +176,41 @@ def test_prompt_summary_uses_only_staged_data():
     assert "staged diff only" in prompt
     assert "unstaged" not in prompt.lower()
     assert "history" not in prompt.lower()
+
+
+
+def test_prompt_size_respects_configured_diff_limit():
+    """Prompt length stays bounded by the configured diff limit plus instructions.
+
+    This is a non-flaky structural measurement, not a hardware-dependent timing
+    assertion. The fixed instruction/summary overhead is expected to be small.
+    """
+    max_diff_chars = 500
+    oversized_diff = "x" * 5000
+    prepared = _prepared(
+        (
+            _entry("M", "src/main.py"),
+            _entry("A", "tests/test_main.py"),
+        ),
+        oversized_diff,
+        truncated=False,
+        max_diff_chars=max_diff_chars,
+    )
+    # The diff module would have truncated; simulate by truncating manually.
+    from toolsmith.git import diff as git_diff
+    bounded, truncated = git_diff._apply_truncation(oversized_diff, max_diff_chars)
+    prepared_truncated = _prepared(
+        (
+            _entry("M", "src/main.py"),
+            _entry("A", "tests/test_main.py"),
+        ),
+        bounded,
+        truncated=True,
+        max_diff_chars=max_diff_chars,
+    )
+    prompt = build_commit_prompt(prepared_truncated)
+
+    # Fixed overhead covers instructions, summary lines, and truncation marker.
+    overhead = 1200
+    assert len(prompt) <= max_diff_chars + overhead
+    assert "truncated" in prompt.lower()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -73,3 +74,15 @@ def test_installed_entry_point_cw_outside_repository_exits_nonzero(tmp_path):
     assert result.returncode == 3
     assert "Error:" in result.stderr
     assert "git repository" in result.stderr.lower()
+
+
+
+def test_installed_entry_point_help_is_fast():
+    """`toolsmith --help` starts quickly; this is a non-flaky upper-bound check."""
+    start = time.time()
+    result = _run_toolsmith("--help")
+    elapsed = time.time() - start
+
+    assert result.returncode == 0
+    assert "toolsmith" in result.stdout
+    assert elapsed < 2.0, f"help startup took {elapsed:.2f}s"

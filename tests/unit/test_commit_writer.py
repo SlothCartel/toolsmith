@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from toolsmith.commands import commit_writer
-from toolsmith.errors import CancelError, DependencyError, EmptyCommitMessageError
+from toolsmith.errors import CancelError, DependencyError, EmptyCommitMessageError, GitError, NoRepositoryError, NoStagedChangesError, UsageError
 from toolsmith.git import commit as git_commit
 from toolsmith.git.diff import PreparedDiff, StatusEntry
 from toolsmith.llm.base import LLMResponse
@@ -438,4 +438,214 @@ class TestDryRun:
 
         assert code == 0
         assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+
+
+class TestErrorPaths:
+    """Safety/orchestration tests proving early errors skip LLM and services."""
+
+    def test_invalid_config_raises_before_git_and_llm(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        def raise_usage(*args, **kwargs):
+            raise UsageError("bad config")
+
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.config.build_config", raise_usage
+        )
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.git_repository.find_repository_root",
+            lambda: (_ for _ in ()).throw(AssertionError("git should not be called")),
+        )
+
+        client_spy: list[object] = []
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: client_spy.append(provider) or (_ for _ in ()).throw(
+                AssertionError("LLM client should not be constructed")
+            ),
+        )
+
+        commit_service = _RecordingCommitService()
+        push_service = _RecordingPushService()
+
+        with pytest.raises(UsageError):
+            commit_writer.run(
+                _make_args(),
+                commit_service=commit_service,
+                push_service=push_service,
+            )
+
+        assert client_spy == []
+        assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+    def test_outside_repository_raises_before_llm_and_services(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.git_repository.find_repository_root",
+            lambda: (_ for _ in ()).throw(NoRepositoryError("not a repo")),
+        )
+
+        client_spy: list[object] = []
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: client_spy.append(provider) or (_ for _ in ()).throw(
+                AssertionError("LLM client should not be constructed")
+            ),
+        )
+
+        commit_service = _RecordingCommitService()
+        push_service = _RecordingPushService()
+
+        with pytest.raises(NoRepositoryError):
+            commit_writer.run(
+                _make_args(),
+                commit_service=commit_service,
+                push_service=push_service,
+            )
+
+        assert client_spy == []
+        assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+    def test_no_staged_changes_raises_before_llm_and_services(
+        self, monkeypatch, tmp_path, patched_repo
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.git_diff.prepare_staged_diff",
+            lambda root, max_chars: (_ for _ in ()).throw(
+                NoStagedChangesError("no staged changes")
+            ),
+        )
+
+        client_spy: list[object] = []
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: client_spy.append(provider) or (_ for _ in ()).throw(
+                AssertionError("LLM client should not be constructed")
+            ),
+        )
+
+        commit_service = _RecordingCommitService()
+        push_service = _RecordingPushService()
+
+        with pytest.raises(NoStagedChangesError):
+            commit_writer.run(
+                _make_args(),
+                commit_service=commit_service,
+                push_service=push_service,
+            )
+
+        assert client_spy == []
+        assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+    def test_diff_failure_raises_before_llm_and_services(
+        self, monkeypatch, tmp_path, patched_repo
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.git_diff.prepare_staged_diff",
+            lambda root, max_chars: (_ for _ in ()).throw(GitError("diff failed")),
+        )
+
+        client_spy: list[object] = []
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: client_spy.append(provider) or (_ for _ in ()).throw(
+                AssertionError("LLM client should not be constructed")
+            ),
+        )
+
+        commit_service = _RecordingCommitService()
+        push_service = _RecordingPushService()
+
+        with pytest.raises(GitError):
+            commit_writer.run(
+                _make_args(),
+                commit_service=commit_service,
+                push_service=push_service,
+            )
+
+        assert client_spy == []
+        assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            LLMResponse(
+                text="",
+                success=False,
+                error="Local LLM runtime is unavailable.",
+            ),
+            LLMResponse(text="", success=False, error="Local LLM request timed out."),
+            LLMResponse(
+                text="",
+                success=False,
+                error="LLM returned malformed response: not json",
+            ),
+            LLMResponse(text="", success=False, error="LLM returned empty output."),
+        ],
+    )
+    def test_llm_failure_variants_block_commit_and_push(
+        self, monkeypatch, tmp_path, patched_repo, response
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        client = FakeLLMClient(response=response)
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: client,
+        )
+
+        commit_service = _RecordingCommitService()
+        push_service = _RecordingPushService()
+
+        with pytest.raises(DependencyError):
+            commit_writer.run(
+                _make_args(),
+                commit_service=commit_service,
+                push_service=push_service,
+            )
+
+        assert len(client.calls) == 1
+        assert len(commit_service.calls) == 0
+        assert len(push_service.calls) == 0
+
+    def test_commit_service_failure_raises_git_error_and_skips_push(
+        self, monkeypatch, tmp_path, fake_llm_client, patched_repo
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(
+            "toolsmith.commands.commit_writer.llm.create_client",
+            lambda provider: fake_llm_client,
+        )
+
+        class FailingCommitService(git_commit.CommitService):
+            def create_commit(
+                self, *, repository_root: Path, message: str
+            ) -> git_commit.CommitResult:
+                return git_commit.CommitResult(
+                    success=False, message="commit-msg hook rejected"
+                )
+
+        push_service = _RecordingPushService()
+
+        with patch("toolsmith.ui.prompts.input", side_effect=["a"]), pytest.raises(
+            GitError
+        ) as exc_info:
+            commit_writer.run(
+                _make_args(),
+                commit_service=FailingCommitService(),
+                push_service=push_service,
+            )
+
+        assert "commit-msg hook rejected" in str(exc_info.value)
         assert len(push_service.calls) == 0
